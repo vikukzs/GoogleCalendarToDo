@@ -1,7 +1,5 @@
 package com.example.quickstart;
 
-import com.google.android.gms.common.ConnectionResult;
-import com.google.android.gms.common.GoogleApiAvailability;
 import com.google.api.client.extensions.android.http.AndroidHttp;
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential;
 import com.google.api.client.googleapis.extensions.android.gms.auth.GooglePlayServicesAvailabilityIOException;
@@ -20,23 +18,17 @@ import com.google.api.services.calendar.model.*;
 import android.Manifest;
 import android.accounts.AccountManager;
 import android.app.Activity;
-import android.app.Dialog;
 import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.net.ConnectivityManager;
-import android.net.NetworkInfo;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
-import android.text.TextUtils;
-import android.text.method.ScrollingMovementMethod;
-import android.view.View;
-import android.view.ViewGroup;
-import android.widget.Button;
-import android.widget.LinearLayout;
+import android.support.v7.widget.LinearLayoutManager;
+import android.support.v7.widget.RecyclerView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -56,7 +48,10 @@ public class MainActivity extends Activity
         implements EasyPermissions.PermissionCallbacks {
 
     @BindView(R.id.main_text) TextView mOutputText;
-    @BindView(R.id.main_button) Button mCallApiButton;
+    @BindView(R.id.event_list_recycler_view) RecyclerView listRecView;
+
+    private CalendarAdapter adapter;
+    private List<CalendarEvent> eventsList = new ArrayList<>();
 
     GoogleAccountCredential mCredential;
     ProgressDialog mProgress;
@@ -80,22 +75,15 @@ public class MainActivity extends Activity
         setContentView(R.layout.activity_main);
         ButterKnife.bind(this);
 
-        mCallApiButton.setText(BUTTON_TEXT);
-//        mCallApiButton.setOnClickListener(new View.OnClickListener() {
-//            @Override
-//            public void onClick(View v) {
-//                mCallApiButton.setEnabled(false);
-//                mOutputText.setText("");
-//                mCallApiButton.setEnabled(true);
-//            }
-//        });
-
         mOutputText.setText(
                 "Click the \'" + BUTTON_TEXT +"\' button to test the API.");
 
         mProgress = new ProgressDialog(this);
         mProgress.setMessage("Calling Google Calendar API ...");
 
+        adapter = new CalendarAdapter(eventsList);
+        listRecView.setLayoutManager(new LinearLayoutManager(this));
+        listRecView.setAdapter(adapter);
 
         // Initialize credentials and service object.
         mCredential = GoogleAccountCredential.usingOAuth2(
@@ -254,7 +242,7 @@ public class MainActivity extends Activity
      * An asynchronous task that handles the Google Calendar API call.
      * Placing the API calls in their own task ensures the UI stays responsive.
      */
-    private class MakeRequestTask extends AsyncTask<Void, Void, List<String>> {
+    private class MakeRequestTask extends AsyncTask<Void, Void, List<CalendarEvent>> {
         private com.google.api.services.calendar.Calendar mService = null;
         private Exception mLastError = null;
 
@@ -272,7 +260,7 @@ public class MainActivity extends Activity
          * @param params no parameters needed for this task.
          */
         @Override
-        protected List<String> doInBackground(Void... params) {
+        protected List<CalendarEvent> doInBackground(Void... params) {
             try {
                 return getDataFromApi();
             } catch (Exception e) {
@@ -287,10 +275,10 @@ public class MainActivity extends Activity
          * @return List of Strings describing returned events.
          * @throws IOException
          */
-        private List<String> getDataFromApi() throws IOException {
+        private List<CalendarEvent> getDataFromApi() throws IOException {
             // List the next 10 events from the primary calendar.
             DateTime now = new DateTime(System.currentTimeMillis());
-            List<String> eventStrings = new ArrayList<String>();
+            List<CalendarEvent> calendarEvents = new ArrayList<CalendarEvent>();
             Events events = mService.events().list("primary")
                     .setMaxResults(10)
                     .setTimeMin(now)
@@ -306,10 +294,12 @@ public class MainActivity extends Activity
                     // the start date.
                     start = event.getStart().getDate();
                 }
-                eventStrings.add(
-                        String.format("%s (%s)", event.getSummary(), start));
+                if(event.getStart().getDateTime().toString().indexOf("T")!=-1)
+                    calendarEvents.add(new CalendarEvent(event.getSummary(),event.getDescription(),event.getStart().getDateTime().toString().substring(0,event.getStart().getDateTime().toString().indexOf("T"))+"",""));
+                else
+                    calendarEvents.add(new CalendarEvent(event.getSummary(),event.getDescription(),event.getStart().getDateTime().toString()+"",event.getKind()));
             }
-            return eventStrings;
+            return calendarEvents;
         }
 
 
@@ -320,13 +310,15 @@ public class MainActivity extends Activity
         }
 
         @Override
-        protected void onPostExecute(List<String> output) {
+        protected void onPostExecute(List<CalendarEvent> calendarEvents) {
             mProgress.hide();
-            if (output == null || output.size() == 0) {
-                mOutputText.setText("No results returned.");
+            if (calendarEvents == null || calendarEvents.size() == 0) {
+                Toast.makeText(getApplicationContext(), "No results returned.", Toast.LENGTH_SHORT).show();
             } else {
-                output.add(0, "Data retrieved using the Google Calendar API:");
-                mOutputText.setText(TextUtils.join("\n", output));
+                eventsList.clear();
+                for(CalendarEvent c : calendarEvents)
+                    eventsList.add(c);
+                adapter.notifyDataSetChanged();
             }
         }
 
