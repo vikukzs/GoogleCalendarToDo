@@ -81,15 +81,14 @@ public class MainActivity extends Activity
         ButterKnife.bind(this);
 
         mCallApiButton.setText(BUTTON_TEXT);
-        mCallApiButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                mCallApiButton.setEnabled(false);
-                mOutputText.setText("");
-                getResultsFromApi();
-                mCallApiButton.setEnabled(true);
-            }
-        });
+//        mCallApiButton.setOnClickListener(new View.OnClickListener() {
+//            @Override
+//            public void onClick(View v) {
+//                mCallApiButton.setEnabled(false);
+//                mOutputText.setText("");
+//                mCallApiButton.setEnabled(true);
+//            }
+//        });
 
         mOutputText.setText(
                 "Click the \'" + BUTTON_TEXT +"\' button to test the API.");
@@ -102,6 +101,8 @@ public class MainActivity extends Activity
         mCredential = GoogleAccountCredential.usingOAuth2(
                 getApplicationContext(), Arrays.asList(SCOPES))
                 .setBackOff(new ExponentialBackOff());
+
+        getResultsFromApi();
     }
 
 
