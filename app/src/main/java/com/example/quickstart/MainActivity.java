@@ -27,13 +27,13 @@ import android.os.Bundle;
 import android.support.annotation.NonNull;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
+import android.text.format.DateUtils;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
+import java.util.Calendar;
 
 import butterknife.BindView;
 import butterknife.ButterKnife;
@@ -61,7 +61,6 @@ public class MainActivity extends Activity
     static final int REQUEST_GOOGLE_PLAY_SERVICES = 1002;
     static final int REQUEST_PERMISSION_GET_ACCOUNTS = 1003;
 
-    private static final String BUTTON_TEXT = "Call Google Calendar API";
     private static final String PREF_ACCOUNT_NAME = "accountName";
     private static final String[] SCOPES = { CalendarScopes.CALENDAR_READONLY };
 
@@ -74,9 +73,6 @@ public class MainActivity extends Activity
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         ButterKnife.bind(this);
-
-        mOutputText.setText(
-                "Click the \'" + BUTTON_TEXT +"\' button to test the API.");
 
         mProgress = new ProgressDialog(this);
         mProgress.setMessage("Calling Google Calendar API ...");
@@ -276,12 +272,17 @@ public class MainActivity extends Activity
          * @throws IOException
          */
         private List<CalendarEvent> getDataFromApi() throws IOException {
-            // List the next 10 events from the primary calendar.
+            // List the events of next month from the primary calendar.
+            Calendar calendar = Calendar.getInstance();
+            calendar.add(Calendar.MONTH, 1);
+            DateTime oneMonthLater = new DateTime(calendar.getTime());
             DateTime now = new DateTime(System.currentTimeMillis());
+
             List<CalendarEvent> calendarEvents = new ArrayList<CalendarEvent>();
             Events events = mService.events().list("primary")
-                    .setMaxResults(10)
+//                    .setMaxResults(40)
                     .setTimeMin(now)
+                    .setTimeMax(oneMonthLater)
                     .setOrderBy("startTime")
                     .setSingleEvents(true)
                     .execute();
