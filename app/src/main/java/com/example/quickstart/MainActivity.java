@@ -2,8 +2,6 @@ package com.example.quickstart;
 
 import com.google.api.client.extensions.android.http.AndroidHttp;
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential;
-import com.google.api.client.googleapis.extensions.android.gms.auth.GooglePlayServicesAvailabilityIOException;
-import com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException;
 
 import com.google.api.client.http.HttpTransport;
 import com.google.api.client.json.JsonFactory;
@@ -22,33 +20,40 @@ import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.os.AsyncTask;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
-import android.text.format.DateUtils;
+import android.util.Log;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import java.io.IOException;
 import java.util.*;
 import java.util.Calendar;
+import java.util.concurrent.Callable;
 
 import butterknife.BindView;
 import butterknife.ButterKnife;
+import io.reactivex.Observable;
+import io.reactivex.ObservableSource;
+import io.reactivex.disposables.CompositeDisposable;
+import io.reactivex.observers.DisposableObserver;
+import io.reactivex.schedulers.Schedulers;
 import pub.devrel.easypermissions.AfterPermissionGranted;
 import pub.devrel.easypermissions.EasyPermissions;
+import io.reactivex.android.schedulers.AndroidSchedulers;
 
+import static android.content.ContentValues.TAG;
 import static com.example.quickstart.GoogleServicesHelper.acquireGooglePlayServices;
 import static com.example.quickstart.GoogleServicesHelper.isGooglePlayServicesAvailable;
-import static com.example.quickstart.GoogleServicesHelper.showGooglePlayServicesAvailabilityErrorDialog;
 
 public class MainActivity extends Activity
         implements EasyPermissions.PermissionCallbacks {
 
-    @BindView(R.id.main_text) TextView mOutputText;
-    @BindView(R.id.event_list_recycler_view) RecyclerView listRecView;
+    @BindView(R.id.main_text)
+    TextView mOutputText;
+    @BindView(R.id.event_list_recycler_view)
+    RecyclerView listRecView;
 
     private CalendarAdapter adapter;
     private List<CalendarEvent> eventsList = new ArrayList<>();
@@ -56,18 +61,21 @@ public class MainActivity extends Activity
     GoogleAccountCredential mCredential;
     ProgressDialog mProgress;
 
+    private final CompositeDisposable disposables = new CompositeDisposable();
+
     static final int REQUEST_ACCOUNT_PICKER = 1000;
     static final int REQUEST_AUTHORIZATION = 1001;
     static final int REQUEST_GOOGLE_PLAY_SERVICES = 1002;
     static final int REQUEST_PERMISSION_GET_ACCOUNTS = 1003;
 
     private static final String PREF_ACCOUNT_NAME = "accountName";
-    private static final String[] SCOPES = { CalendarScopes.CALENDAR_READONLY };
+    private static final String[] SCOPES = {CalendarScopes.CALENDAR_READONLY};
 
-    /**
-     * Create the main activity.
-     * @param savedInstanceState previously saved instance data.
-     */
+    private com.google.api.services.calendar.Calendar calendarService = null;
+
+    HttpTransport transport = AndroidHttp.newCompatibleTransport();
+    JsonFactory jsonFactory = JacksonFactory.getDefaultInstance();
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -89,37 +97,41 @@ public class MainActivity extends Activity
         getResultsFromApi();
     }
 
-
-
-    /**
-     * Attempt to call the API, after verifying that all the preconditions are
-     * satisfied. The preconditions are: Google Play Services installed, an
-     * account was selected and the device currently has online access. If any
-     * of the preconditions are not satisfied, the app will prompt the user as
-     * appropriate.
-     */
     private void getResultsFromApi() {
-        if (! isGooglePlayServicesAvailable()) {
+        if (!isGooglePlayServicesAvailable()) {
             acquireGooglePlayServices();
         } else if (mCredential.getSelectedAccountName() == null) {
             chooseAccount();
-        } else if (! AppUtility.isDeviceOnline()) {
+        } else if (!AppUtility.isDeviceOnline()) {
             mOutputText.setText("No network connection available.");
         } else {
-            new MakeRequestTask(mCredential).execute();
+            getListFromObservable();
         }
     }
 
-    /**
-     * Attempts to set the account used with the API credentials. If an account
-     * name was previously saved it will use that one; otherwise an account
-     * picker dialog will be shown to the user. Note that the setting the
-     * account to use with the credentials object requires the app to have the
-     * GET_ACCOUNTS permission, which is requested here if it is not already
-     * present. The AfterPermissionGranted annotation indicates that this
-     * function will be rerun automatically whenever the GET_ACCOUNTS permission
-     * is granted.
-     */
+    private void getListFromObservable() {
+        disposables.add(calendarObservable()
+                // Run on a background thread
+                .subscribeOn(Schedulers.io())
+                // Be notified on the main thread
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribeWith(new DisposableObserver<List<CalendarEvent>>() {
+                    @Override public void onComplete() {
+                        adapter.notifyDataSetChanged();
+                    }
+
+                    @Override public void onError(Throwable e) {
+                        Log.e(TAG, "onError()", e);
+                    }
+
+                    @Override public void onNext(List<CalendarEvent> events) {
+                        for (CalendarEvent event : events) {
+                            eventsList.add(event);
+                        }
+                    }
+                }));
+    }
+
     @AfterPermissionGranted(REQUEST_PERMISSION_GET_ACCOUNTS)
     private void chooseAccount() {
         if (EasyPermissions.hasPermissions(
@@ -145,21 +157,11 @@ public class MainActivity extends Activity
         }
     }
 
-    /**
-     * Called when an activity launched here (specifically, AccountPicker
-     * and authorization) exits, giving you the requestCode you started it with,
-     * the resultCode it returned, and any additional data from it.
-     * @param requestCode code indicating which activity result is incoming.
-     * @param resultCode code indicating the result of the incoming
-     *     activity result.
-     * @param data Intent (containing result data) returned by incoming
-     *     activity result.
-     */
     @Override
     protected void onActivityResult(
             int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        switch(requestCode) {
+        switch (requestCode) {
             case REQUEST_GOOGLE_PLAY_SERVICES:
                 if (resultCode != RESULT_OK) {
                     mOutputText.setText(
@@ -193,14 +195,6 @@ public class MainActivity extends Activity
         }
     }
 
-    /**
-     * Respond to requests for permissions at runtime for API 23 and above.
-     * @param requestCode The request code passed in
-     *     requestPermissions(android.app.Activity, String, int, String[])
-     * @param permissions The requested permissions. Never null.
-     * @param grantResults The grant results for the corresponding permissions
-     *     which is either PERMISSION_GRANTED or PERMISSION_DENIED. Never null.
-     */
     @Override
     public void onRequestPermissionsResult(int requestCode,
                                            @NonNull String[] permissions,
@@ -210,138 +204,64 @@ public class MainActivity extends Activity
                 requestCode, permissions, grantResults, this);
     }
 
-    /**
-     * Callback for when a permission is granted using the EasyPermissions
-     * library.
-     * @param requestCode The request code associated with the requested
-     *         permission
-     * @param list The requested permission list. Never null.
-     */
     @Override
     public void onPermissionsGranted(int requestCode, List<String> list) {
         // Do nothing.
     }
 
-    /**
-     * Callback for when a permission is denied using the EasyPermissions
-     * library.
-     * @param requestCode The request code associated with the requested
-     *         permission
-     * @param list The requested permission list. Never null.
-     */
     @Override
     public void onPermissionsDenied(int requestCode, List<String> list) {
         // Do nothing.
     }
 
-    /**
-     * An asynchronous task that handles the Google Calendar API call.
-     * Placing the API calls in their own task ensures the UI stays responsive.
-     */
-    private class MakeRequestTask extends AsyncTask<Void, Void, List<CalendarEvent>> {
-        private com.google.api.services.calendar.Calendar mService = null;
-        private Exception mLastError = null;
 
-        MakeRequestTask(GoogleAccountCredential credential) {
-            HttpTransport transport = AndroidHttp.newCompatibleTransport();
-            JsonFactory jsonFactory = JacksonFactory.getDefaultInstance();
-            mService = new com.google.api.services.calendar.Calendar.Builder(
-                    transport, jsonFactory, credential)
-                    .setApplicationName("Google Calendar API Android Quickstart")
-                    .build();
-        }
+    private List<CalendarEvent> getDataFromApi() throws IOException {
+        // List the events of next month from the primary calendar.
+        calendarService = new com.google.api.services.calendar.Calendar.Builder(
+                transport, jsonFactory, mCredential)
+                .setApplicationName("Google Calendar API Android Quickstart")
+                .build();
 
-        /**
-         * Background task to call Google Calendar API.
-         * @param params no parameters needed for this task.
-         */
-        @Override
-        protected List<CalendarEvent> doInBackground(Void... params) {
-            try {
-                return getDataFromApi();
-            } catch (Exception e) {
-                mLastError = e;
-                cancel(true);
-                return null;
+        Calendar calendar = Calendar.getInstance();
+        calendar.add(Calendar.MONTH, 1);
+        DateTime oneMonthLater = new DateTime(calendar.getTime());
+        DateTime now = new DateTime(System.currentTimeMillis());
+
+        List<CalendarEvent> calendarEvents = new ArrayList<CalendarEvent>();
+        Events events = calendarService.events().list("primary")
+                .setTimeMin(now)
+                .setTimeMax(oneMonthLater)
+                .setOrderBy("startTime")
+                .setSingleEvents(true)
+                .execute();
+        List<Event> items = events.getItems();
+
+        for (Event event : items) {
+            DateTime start = event.getStart().getDateTime();
+            if (start == null) {
+                // All-day events don't have start times, so just use
+                // the start date.
+                start = event.getStart().getDate();
             }
+            if (event.getStart().getDateTime().toString().contains("T"))
+                calendarEvents.add(new CalendarEvent(event.getSummary(), event.getDescription(), event.getStart().getDateTime().toString().substring(0, event.getStart().getDateTime().toString().indexOf("T")) + "", ""));
+            else
+                calendarEvents.add(new CalendarEvent(event.getSummary(), event.getDescription(), event.getStart().getDateTime().toString() + "", event.getKind()));
         }
+        return calendarEvents;
+    }
 
-        /**
-         * Fetch a list of the next 10 events from the primary calendar.
-         * @return List of Strings describing returned events.
-         * @throws IOException
-         */
-        private List<CalendarEvent> getDataFromApi() throws IOException {
-            // List the events of next month from the primary calendar.
-            Calendar calendar = Calendar.getInstance();
-            calendar.add(Calendar.MONTH, 1);
-            DateTime oneMonthLater = new DateTime(calendar.getTime());
-            DateTime now = new DateTime(System.currentTimeMillis());
-
-            List<CalendarEvent> calendarEvents = new ArrayList<CalendarEvent>();
-            Events events = mService.events().list("primary")
-//                    .setMaxResults(40)
-                    .setTimeMin(now)
-                    .setTimeMax(oneMonthLater)
-                    .setOrderBy("startTime")
-                    .setSingleEvents(true)
-                    .execute();
-            List<Event> items = events.getItems();
-
-            for (Event event : items) {
-                DateTime start = event.getStart().getDateTime();
-                if (start == null) {
-                    // All-day events don't have start times, so just use
-                    // the start date.
-                    start = event.getStart().getDate();
-                }
-                if(event.getStart().getDateTime().toString().indexOf("T")!=-1)
-                    calendarEvents.add(new CalendarEvent(event.getSummary(),event.getDescription(),event.getStart().getDateTime().toString().substring(0,event.getStart().getDateTime().toString().indexOf("T"))+"",""));
-                else
-                    calendarEvents.add(new CalendarEvent(event.getSummary(),event.getDescription(),event.getStart().getDateTime().toString()+"",event.getKind()));
+     private Observable<List<CalendarEvent>> calendarObservable() {
+        return Observable.defer(new Callable<ObservableSource<? extends List<CalendarEvent>>>() {
+            @Override public ObservableSource<? extends List<CalendarEvent>> call() throws Exception {
+                // Do some long running operation
+                return Observable.just(getDataFromApi());
             }
-            return calendarEvents;
-        }
+        });
+    }
 
-
-        @Override
-        protected void onPreExecute() {
-            mOutputText.setText("");
-            mProgress.show();
-        }
-
-        @Override
-        protected void onPostExecute(List<CalendarEvent> calendarEvents) {
-            mProgress.hide();
-            if (calendarEvents == null || calendarEvents.size() == 0) {
-                Toast.makeText(getApplicationContext(), "No results returned.", Toast.LENGTH_SHORT).show();
-            } else {
-                eventsList.clear();
-                for(CalendarEvent c : calendarEvents)
-                    eventsList.add(c);
-                adapter.notifyDataSetChanged();
-            }
-        }
-
-        @Override
-        protected void onCancelled() {
-            mProgress.hide();
-            if (mLastError != null) {
-                if (mLastError instanceof GooglePlayServicesAvailabilityIOException) {
-                    showGooglePlayServicesAvailabilityErrorDialog(
-                            ((GooglePlayServicesAvailabilityIOException) mLastError)
-                                    .getConnectionStatusCode());
-                } else if (mLastError instanceof UserRecoverableAuthIOException) {
-                    startActivityForResult(
-                            ((UserRecoverableAuthIOException) mLastError).getIntent(),
-                            MainActivity.REQUEST_AUTHORIZATION);
-                } else {
-                    mOutputText.setText("The following error occurred:\n"
-                            + mLastError.getMessage());
-                }
-            } else {
-                mOutputText.setText("Request cancelled.");
-            }
-        }
+    @Override protected void onDestroy() {
+        super.onDestroy();
+        disposables.clear();
     }
 }
