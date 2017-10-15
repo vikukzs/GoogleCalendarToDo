@@ -8,7 +8,6 @@ import com.google.api.services.calendar.CalendarScopes;
 
 import android.Manifest;
 import android.accounts.AccountManager;
-import android.app.Activity;
 import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.Intent;
@@ -105,7 +104,7 @@ public class MainActivity extends AppCompatActivity
             chooseAccount();
         } else if (!AppUtility.isDeviceOnline()) {
             mOutputText.setText("No network connection available.");
-        } 
+        }
     }
 
     @AfterPermissionGranted(REQUEST_PERMISSION_GET_ACCOUNTS)

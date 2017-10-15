@@ -1,8 +1,6 @@
 package com.example.quickstart;
 
-import android.content.SharedPreferences;
 import android.os.Bundle;
-import android.preference.PreferenceManager;
 import android.support.annotation.Nullable;
 import android.support.v4.app.Fragment;
 import android.support.v7.widget.LinearLayoutManager;
@@ -18,7 +16,6 @@ import com.google.api.client.http.HttpTransport;
 import com.google.api.client.json.JsonFactory;
 import com.google.api.client.json.jackson2.JacksonFactory;
 import com.google.api.client.util.DateTime;
-import com.google.api.services.calendar.CalendarScopes;
 import com.google.api.services.calendar.model.Event;
 import com.google.api.services.calendar.model.Events;
 
@@ -50,10 +47,6 @@ public class CalendarFragment extends Fragment {
     private CalendarAdapter adapter;
     private List<CalendarEvent> eventsList = new ArrayList<>();
     private GoogleAccountCredential mCredential;
-    SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(MyApp.getAppContext());
-    private static final String PREF_ACCOUNT_NAME = "accountName";
-
-    private static final String[] SCOPES = {CalendarScopes.CALENDAR_READONLY};
 
     private com.google.api.services.calendar.Calendar calendarService = null;
 
@@ -73,7 +66,7 @@ public class CalendarFragment extends Fragment {
     @Nullable
     @Override
     public View onCreateView(LayoutInflater inflater, @Nullable ViewGroup container, Bundle savedInstanceState) {
-        View view = inflater.inflate(R.layout.fragment_calendar, container, false);
+        View view = inflater.inflate(R.layout.fragment_list, container, false);
         ButterKnife.bind(this, view);
 
         adapter = new CalendarAdapter(eventsList);
