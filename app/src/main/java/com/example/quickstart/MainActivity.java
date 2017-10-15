@@ -15,6 +15,9 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
+import android.support.design.widget.TabLayout;
+import android.support.v4.view.ViewPager;
+import android.support.v7.app.AppCompatActivity;
 import android.widget.TextView;
 
 import java.util.*;
@@ -27,11 +30,17 @@ import pub.devrel.easypermissions.EasyPermissions;
 import static com.example.quickstart.GoogleServicesHelper.acquireGooglePlayServices;
 import static com.example.quickstart.GoogleServicesHelper.isGooglePlayServicesAvailable;
 
-public class MainActivity extends Activity
+public class MainActivity extends AppCompatActivity
         implements EasyPermissions.PermissionCallbacks {
 
     @BindView(R.id.main_text)
     TextView mOutputText;
+
+    @BindView(R.id.tab_layout)
+    TabLayout tabLayout;
+
+    @BindView(R.id.pager)
+    ViewPager pager;
 
     GoogleAccountCredential mCredential;
     ProgressDialog mProgress;
@@ -57,12 +66,36 @@ public class MainActivity extends Activity
         mProgress = new ProgressDialog(this);
         mProgress.setMessage("Calling Google Calendar API ...");
 
+        tabLayout.addTab(tabLayout.newTab().setText("Events"));
+        tabLayout.addTab(tabLayout.newTab().setText("Tasks"));
+
         // Initialize credentials and service object.
         mCredential = GoogleAccountCredential.usingOAuth2(
                 getApplicationContext(), Arrays.asList(SCOPES))
                 .setBackOff(new ExponentialBackOff());
 
         getResultsFromApi();
+
+        final PagerAdapter adapter = new PagerAdapter
+                (getSupportFragmentManager(), tabLayout.getTabCount());
+        pager.setAdapter(adapter);
+        pager.addOnPageChangeListener(new TabLayout.TabLayoutOnPageChangeListener(tabLayout));
+        tabLayout.setOnTabSelectedListener(new TabLayout.OnTabSelectedListener() {
+            @Override
+            public void onTabSelected(TabLayout.Tab tab) {
+                pager.setCurrentItem(tab.getPosition());
+            }
+
+            @Override
+            public void onTabUnselected(TabLayout.Tab tab) {
+
+            }
+
+            @Override
+            public void onTabReselected(TabLayout.Tab tab) {
+
+            }
+        });
     }
 
     private void getResultsFromApi() {
@@ -72,9 +105,7 @@ public class MainActivity extends Activity
             chooseAccount();
         } else if (!AppUtility.isDeviceOnline()) {
             mOutputText.setText("No network connection available.");
-        } else {
-            getFragmentManager().beginTransaction().add(R.id.fragment_container,new CalendarFragment()).commit();
-        }
+        } 
     }
 
     @AfterPermissionGranted(REQUEST_PERMISSION_GET_ACCOUNTS)
